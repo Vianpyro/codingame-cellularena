@@ -42,7 +42,8 @@ This repository serves as both a personal archive and a learning resource for an
 codingame-cellularena/
 ├── README.md          # This file - documentation about the repository
 ├── LICENSE            # MIT License
-└── .gitignore         # Git ignore rules
+├── .gitignore         # Git ignore rules
+└── main.rs            # Main program
 ```
 
 As code is developed, it will be organized in this repository for easy reference and version control.
@@ -52,7 +53,7 @@ As code is developed, it will be organized in this repository for easy reference
 The code in this repository is specific to the CodinGame Cellularena challenge. To use it:
 
 1. Visit the [CodinGame website](https://www.codingame.com/)
-2. Find the Cellularena challenge
+2. Find the [Cellularena challenge](https://www.codingame.com/ide/puzzle/winter-challenge-2024)
 3. Review the solutions in this repository
 4. Adapt and improve the strategies for your own submissions
 
@@ -64,7 +65,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [CodinGame Website](https://www.codingame.com/)
 - [CodinGame Community](https://www.codingame.com/forum)
-- [My CodinGame Profile](https://www.codingame.com/profile/YOUR_PROFILE) *(Update with your profile link)*
+- [My CodinGame Profile](https://www.codingame.com/profile/04a568958ae08c8fa841c9fae28010756261646) *(Update with your profile link)*
 
 ## 🤝 Contributing
 
