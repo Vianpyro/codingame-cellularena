@@ -62,19 +62,58 @@ fn main() {
         io::stdin().read_line(&mut input_line).unwrap();
         let required_actions_count = parse_input!(input_line, u8); // your number of organisms, output an action for each one in any order
 
-        for i in 0..required_actions_count {
-            if my_a > 0 {
+        // Strategy:
+        // 1. If we have C and D, try to place a harvester
+        // 2. Otherwise, grow toward proteins with BASIC
+        for _ in 0..required_actions_count {
+            let mut action_taken = false;
+
+            if !action_taken && my_c > 0 && my_d > 0 {
+                // 1. Find a protein on the map
+                if let Some((protein_x, protein_y, protein_type)) = game_state.find_any_protein() {
+                    // 2. Find valid position next to it where harvester can be placed
+                    if let Some((organ_id, target_x, target_y, face_dir)) = 
+                        game_state.find_harvester_position(protein_x, protein_y) {
+                        // 3. Issue GROW command with HARVESTER type and direction
+                        println!("GROW {} {} {} HARVESTER {}", 
+                            organ_id, target_x, target_y, face_dir.to_string());
+                        action_taken = true;
+                    }
+                }
+            }
+
+            if !action_taken && my_a > 0 {
                 if let Some(&(root_x, root_y)) = game_state.my_organs.get(&game_state.my_root_id) {
                     if let Some((target_x, target_y)) = game_state.find_closest_protein(root_x, root_y, CellType::ProteinA) {
                         println!("GROW {} {} {} BASIC", game_state.my_root_id, target_x, target_y);
+                        action_taken = true;
                     } else {
-                        // No protein found, just expand in any direction
-                        println!("WAIT");
+                        if let Some((protein_x, protein_y, _)) = game_state.find_any_protein() {
+                            if let Some((organ_id, _)) = game_state.find_closest_organ(protein_x, protein_y) {
+                                println!("GROW {} {} {} BASIC", organ_id, protein_x, protein_y);
+                                action_taken = true;
+                            }
+                        } else {
+                            for (&organ_id, &(organ_x, organ_y)) in &game_state.my_organs {
+                                let directions = [Direction::East, Direction::North, Direction::South, Direction::West];
+                                for dir in &directions {
+                                    let (new_x, new_y) = dir.apply(organ_x, organ_y);
+                                    if game_state.is_empty(new_x as u8, new_y as u8) {
+                                        println!("GROW {} {} {} BASIC", organ_id, new_x as u8, new_y as u8);
+                                        action_taken = true;
+                                        break;
+                                    }
+                                }
+                                if action_taken {
+                                    break;
+                                }
+                            }
+                        }
                     }
-                } else {
-                    println!("WAIT");
                 }
-            } else {
+            }
+
+            if !action_taken {
                 println!("WAIT");
             }
         }
@@ -95,6 +134,54 @@ impl Owner {
             0 => Owner::Opponent,
             _ => Owner::Neutral,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Direction {
+    East,
+    North,
+    South,
+    West,
+}
+
+impl Direction {
+    fn to_string(&self) -> &str {
+        match self {
+            Direction::East => "E",
+            Direction::North => "N",
+            Direction::South => "S",
+            Direction::West => "W",
+        }
+    }
+
+    // Get the direction from (from_x, from_y) to (to_x, to_y)
+    fn from_coords(from_x: u8, from_y: u8, to_x: u8, to_y: u8) -> Option<Direction> {
+        let dx = to_x as i16 - from_x as i16;
+        let dy = to_y as i16 - from_y as i16;
+
+        if dx == 1 && dy == 0 {
+            Some(Direction::East)
+        } else if dx == 0 && dy == -1 {
+            Some(Direction::North)
+        } else if dx == 0 && dy == 1 {
+            Some(Direction::South)
+        } else if dx == -1 && dy == 0 {
+            Some(Direction::West)
+        } else {
+            None
+        }
+    }
+
+    // Get the target coordinates when moving in this direction
+    fn apply(&self, x: u8, y: u8) -> (i16, i16) {
+        match self {
+            Direction::North => (x as i16, y as i16 -1),
+            Direction::East => (x as i16 + 1, y as i16),
+            Direction::South => (x as i16, y as i16 + 1),
+            Direction::West => (x as i16 - 1, y as i16),
+        }
+
     }
 }
 
@@ -195,7 +282,7 @@ impl GameState {
 
     fn is_empty(&self, x: u8, y: u8) -> bool {
         let cell = &self.grid[y as usize][x as usize];
-        cell.owner == Owner::Neutral && cell.cell_type != CellType::Wall
+        cell.owner == Owner::Neutral && cell.cell_type != CellType::Wall && !cell.cell_type.is_protein()
     }
 
     fn is_available(&self, x: u8, y: u8) -> bool {
@@ -204,7 +291,42 @@ impl GameState {
         cell.cell_type.is_protein()
     }
 
-    // BFS to find closest protein of type A
+    fn get_cell(&self, x: u8, y: u8) -> &Cell {
+        &self.grid[y as usize][x as usize]
+    }
+
+    fn manhattan_distance(&self, start_x: u8, start_y: u8, target_x: u8, target_y: u8) -> u32 {
+        ((start_x as i32 - target_x as i32).abs() + (start_y as i32 - target_y as i32).abs()) as u32
+    }
+
+    fn is_protein_being_harvested(&self, protein_x: u8, protein_y: u8) -> bool {
+        let directions = [Direction::East, Direction::North, Direction::South, Direction::West];
+        
+        for dir in &directions {
+            let (adj_x, adj_y) = dir.apply(protein_x, protein_y);
+            if self.is_valid(adj_x, adj_y) {
+                let cell = self.get_cell(adj_x as u8, adj_y as u8);
+                if cell.cell_type == CellType::Harvester && cell.owner == Owner::Me {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn find_any_protein(&self) -> Option<(u8, u8, CellType)> {
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let cell = &self.grid[y as usize][x as usize];
+                if cell.cell_type.is_protein() && cell.owner == Owner::Neutral && !self.is_protein_being_harvested(x, y) {
+                    return Some((x, y, cell.cell_type.clone()));
+                }
+            }
+        }
+        None
+    }
+
+    // BFS to find closest protein of specific type
     fn find_closest_protein(&self, start_x: u8, start_y: u8, protein_type: CellType) -> Option<(u8, u8)> {
         let mut visited = vec![vec![false; self.width as usize]; self.height as usize];
         let mut queue = VecDeque::new();
@@ -214,10 +336,10 @@ impl GameState {
         
         let directions = [(0, 1), (1, 0), (0, -1), (-1, 0)];
         
-        while let Some((x, y, dist)) = queue.pop_front() {
+        while let Some((x, y, distance)) = queue.pop_front() {
             let cell = &self.grid[y as usize][x as usize];
             
-            if cell.cell_type == protein_type && cell.owner == Owner::Neutral {
+            if cell.cell_type == protein_type && cell.owner == Owner::Neutral && !self.is_protein_being_harvested(x, y) {
                 return Some((x, y));
             }
             
@@ -231,12 +353,66 @@ impl GameState {
                     
                     if !visited[ny as usize][nx as usize] {
                         visited[ny as usize][nx as usize] = true;
-                        queue.push_back((nx, ny, dist + 1));
+                        queue.push_back((nx, ny, distance + 1));
                     }
                 }
             }
         }
         
+        None
+    }
+
+    fn find_closest_organ(&self, target_x: u8, target_y: u8) -> Option<(u16, u32)> {
+        let mut closest: Option<(u16, u32)> = None;
+
+        for (&organ_id, &(x, y)) in &self.my_organs {
+            let distance = self.manhattan_distance(x, y, target_x, target_y);
+
+            if let Some((_, min_distance)) = closest {
+                if distance < min_distance {
+                    closest = Some((organ_id, distance));
+                }
+            } else {
+                closest = Some((organ_id, distance));
+            }
+        }
+
+        closest
+    }
+
+    // Find best position to place a harvester for a given protein
+    fn find_harvester_position(&self, protein_x: u8, protein_y: u8) -> Option<(u16, u8, u8, Direction)> {
+        let directions = [Direction::East, Direction::North, Direction::South, Direction::West];
+
+        for dir in &directions {
+            let (adjacent_x, adjacent_y) = dir.apply(protein_x, protein_y);
+
+            if !self.is_valid(adjacent_x, adjacent_y) {
+                continue;
+            }
+
+            let adjacent_x = adjacent_x as u8;
+            let adjacent_y = adjacent_y as u8;
+
+            if !self.is_empty(adjacent_x, adjacent_y) {
+                continue;
+            }
+
+            if let Some(face_dir) = Direction::from_coords(adjacent_x, adjacent_y, protein_x, protein_y) {
+                // Find an organ that is actually adjacent to the target position
+                for &check_dir in &directions {
+                    let (organ_x, organ_y) = check_dir.apply(adjacent_x, adjacent_y);
+                    if self.is_valid(organ_x, organ_y) {
+                        let organ_x = organ_x as u8;
+                        let organ_y = organ_y as u8;
+                        let cell = self.get_cell(organ_x, organ_y);
+                        if cell.owner == Owner::Me && cell.organ_id > 0 {
+                            return Some((cell.organ_id, adjacent_x, adjacent_y, face_dir));
+                        }
+                    }
+                }
+            }
+        }
         None
     }
 }
